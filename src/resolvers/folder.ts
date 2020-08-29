@@ -1,0 +1,282 @@
+import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
+import {
+  ByIdArgs,
+  CreateFolderInput,
+  FolderArgs,
+  FolderDto,
+  FolderRelArgs,
+  FolderRelDto,
+  PaginateArgs,
+  UpdateFolderInput,
+  FolderMemberInput,
+  ByIdInput,
+  JoinFolderInput
+} from 'dto';
+import { MemberAccess } from 'models';
+import { AuthGuard, UserId } from 'services';
+import { getManager, getRepository, Not } from 'typeorm';
+import { FolderEntity, FolderRelEntity, NoteEntity } from 'entities';
+import { AccessError, UnknownError } from 'lib/errors';
+import crypto from 'crypto';
+
+@AuthGuard()
+@Resolver()
+export class FolderResolver {
+  @Query(returns => [FolderDto])
+  folders(@UserId() userId: number, @Args() { offset, limit }: PaginateArgs) {
+    return this.folderByUserQuery(userId)
+      .orderBy('"folder"."name"', 'ASC')
+      .addOrderBy(`"folder"."id"`, 'ASC')
+      .limit(limit)
+      .offset(offset)
+      .getRawMany();
+  }
+
+  @Query(returns => Int)
+  async foldersCount(@UserId() userId: number) {
+    const res = await getRepository(FolderRelEntity)
+      .createQueryBuilder('rel')
+      .select('COUNT(*)::int', 'count')
+      .where(`"rel"."userId" = :userId`, { userId })
+      .getRawOne();
+    return res.count;
+  }
+
+  @Query(returns => FolderDto, { nullable: true })
+  folder(@UserId() userId: number, @Args() { id, invite }: FolderArgs) {
+    if (invite) {
+      return this.folderQuery()
+        .where(`"folder"."invite" = :invite`, { invite })
+        .andWhere(`"folder"."id" = :id`, { id })
+        .getRawOne();
+    } else {
+      return this.folderByUserQuery(userId)
+        .andWhere(`"folder"."id" = :id`, { id })
+        .getRawOne();
+    }
+  }
+
+  private folderQuery() {
+    return getRepository(FolderEntity)
+      .createQueryBuilder('folder')
+      .select(`"folder"."id"`, 'id')
+      .addSelect(`"folder"."name"`, 'name')
+      .addSelect(`"folder"."date"`, 'date')
+      .addSelect(`"rel"."access"::varchar::int`, 'access')
+      .addSelect(`"folder"."invite"`, 'invite')
+      .addSelect(qb => {
+        return qb
+          .select(`COUNT(*)::int`)
+          .from(NoteEntity, 'note')
+          .where(`"note"."folderId" = "folder"."id"`);
+      }, 'count')
+      .leftJoin(FolderRelEntity, 'rel', `"folder"."id" = "rel"."folderId"`);
+  }
+
+  private folderByUserQuery(userId: number) {
+    return this.folderQuery().where(`"rel"."userId" = :userId`, { userId });
+  }
+
+  @Query(returns => [FolderRelDto])
+  members(@Args() { id, limit, offset }: FolderRelArgs) {
+    return getRepository(FolderRelEntity).find({
+      where: {
+        folder: {
+          id,
+        },
+      },
+      take: limit,
+      skip: offset,
+      order: {
+        date: 'DESC',
+        userId: 'ASC',
+      },
+    });
+  }
+
+  @Query(returns => Int)
+  async membersCount(@Args() { id }: ByIdArgs) {
+    const data = await getRepository(FolderRelEntity)
+      .createQueryBuilder('rel')
+      .select(`COUNT(*)::int`, 'count')
+      .where(`"rel"."folderId" = :folderId`, { folderId: id })
+      .getRawOne();
+    return data.count;
+  }
+
+  @Mutation(returns => FolderDto)
+  createFolder(
+    @UserId() userId: number,
+    @Args('input') { name }: CreateFolderInput,
+  ) {
+    return getManager().transaction(async tx => {
+      const fRep = tx.getRepository(FolderEntity);
+      const folder = await fRep.save(
+        fRep.create({
+          name,
+        }),
+      );
+
+      const access = MemberAccess.Admin;
+
+      const frRep = tx.getRepository(FolderRelEntity);
+      await frRep.save(
+        frRep.create({
+          folder,
+          userId,
+          access,
+        }),
+      );
+
+      return {
+        ...folder,
+        access,
+        count: 0,
+      };
+    });
+  }
+
+  @Mutation(returns => Boolean)
+  updateFolder(
+    @UserId() userId: number,
+    @Args('input') { name, id }: UpdateFolderInput,
+  ) {
+    return getManager().transaction(async tx => {
+      const rel = await tx.getRepository(FolderRelEntity).findOne({
+        folder: {
+          id,
+        },
+        userId,
+      });
+
+      if (!rel || rel.access !== MemberAccess.Admin) throw new AccessError();
+
+      const res = await tx.getRepository(FolderEntity).update({ id }, { name });
+
+      return res.affected === 1;
+    });
+  }
+
+  @Mutation(returns => String)
+  createInvite(@UserId() userId: number, @Args('input') { id }: ByIdInput) {
+    return getManager().transaction(async tx => {
+      const rel = await tx.getRepository(FolderRelEntity).findOne({
+        folder: {
+          id,
+        },
+        userId,
+      });
+
+      if (!rel || rel.access !== MemberAccess.Admin) throw new AccessError();
+
+      const invite = crypto.randomBytes(16).toString('hex');
+
+      const res = await tx
+        .getRepository(FolderEntity)
+        .update({ id }, { invite });
+
+      if (res.affected !== 1) throw new UnknownError();
+
+      return invite;
+    });
+  }
+
+  @Mutation(returns => Boolean)
+  deleteInvite(@UserId() userId: number, @Args('input') { id }: ByIdInput) {
+    return getManager().transaction(async tx => {
+      const rel = await tx.getRepository(FolderRelEntity).findOne({
+        folder: {
+          id,
+        },
+        userId,
+      });
+
+      if (!rel || rel.access !== MemberAccess.Admin) throw new AccessError();
+
+      const res = await tx
+        .getRepository(FolderEntity)
+        .update({ id }, { invite: null });
+
+      return res.affected === 1;
+    });
+  }
+
+  @Mutation(returns => Boolean)
+  removeMember(
+    @UserId() userId: number,
+    @Args('input') { id, memberId }: FolderMemberInput,
+  ) {
+    return getManager().transaction(async tx => {
+      const rel = await tx.getRepository(FolderRelEntity).findOne({
+        folder: {
+          id,
+        },
+        userId,
+      });
+
+      if (!rel || rel.access !== MemberAccess.Admin) throw new AccessError();
+
+      const res = await tx.getRepository(FolderRelEntity).delete({
+        folder: {
+          id,
+        },
+        userId: memberId,
+        access: Not(MemberAccess.Admin),
+      });
+
+      return res.affected === 1;
+    });
+  }
+
+  @Mutation(returns => Boolean)
+  async leaveFolder(
+    @UserId() userId: number,
+    @Args('input') { id }: ByIdInput,
+  ) {
+    const res = await getRepository(FolderRelEntity).delete({
+      folder: {
+        id,
+      },
+      userId,
+    });
+
+    return res.affected === 1;
+  }
+
+  @Mutation(returns => Boolean)
+  removeFolder(@UserId() userId: number, @Args('input') { id }: ByIdInput) {
+    return getManager().transaction(async tx => {
+      const rel = await tx.getRepository(FolderRelEntity).findOne({
+        folder: {
+          id,
+        },
+      });
+
+      if (!rel || rel.access !== MemberAccess.Admin) throw new AccessError();
+
+      const res = await tx.getRepository(FolderEntity).delete({
+        id,
+      });
+
+      return res.affected === 1;
+    });
+  }
+
+  @Mutation(returns => FolderRelDto)
+  async joinFolder(@UserId() userId: number, @Args('input') { id, invite }: JoinFolderInput) {
+    const folder = await getRepository(FolderEntity).findOne({
+      id,
+      invite
+    });
+
+    if (!folder) throw new AccessError();
+
+    const rep = getRepository(FolderRelEntity);
+    const rel = rep.create({
+      userId,
+      folder
+    });
+
+    return rep.save(rel);
+  }
+}
