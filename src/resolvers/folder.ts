@@ -10,7 +10,7 @@ import {
   UpdateFolderInput,
   FolderMemberInput,
   ByIdInput,
-  JoinFolderInput
+  JoinFolderInput,
 } from 'dto';
 import { MemberAccess } from 'models';
 import { AuthGuard, UserId } from 'services';
@@ -46,6 +46,13 @@ export class FolderResolver {
   folder(@UserId() userId: number, @Args() { id, invite }: FolderArgs) {
     if (invite) {
       return this.folderQuery()
+        .addSelect(qb => {
+          return qb
+            .select(`"rel"."access"::varchar::int`, 'access')
+            .from(FolderRelEntity, 'rel')
+            .where(`"rel"."userId" = :userId`, { userId })
+            .andWhere(`"rel"."folderId" = "folder"."id"`);
+        }, 'access')
         .where(`"folder"."invite" = :invite`, { invite })
         .andWhere(`"folder"."id" = :id`, { id })
         .getRawOne();
@@ -62,19 +69,20 @@ export class FolderResolver {
       .select(`"folder"."id"`, 'id')
       .addSelect(`"folder"."name"`, 'name')
       .addSelect(`"folder"."date"`, 'date')
-      .addSelect(`"rel"."access"::varchar::int`, 'access')
       .addSelect(`"folder"."invite"`, 'invite')
       .addSelect(qb => {
         return qb
           .select(`COUNT(*)::int`)
           .from(NoteEntity, 'note')
           .where(`"note"."folderId" = "folder"."id"`);
-      }, 'count')
-      .leftJoin(FolderRelEntity, 'rel', `"folder"."id" = "rel"."folderId"`);
+      }, 'count');
   }
 
   private folderByUserQuery(userId: number) {
-    return this.folderQuery().where(`"rel"."userId" = :userId`, { userId });
+    return this.folderQuery()
+      .addSelect(`"rel"."access"::varchar::int`, 'access')
+      .leftJoin(FolderRelEntity, 'rel', `"folder"."id" = "rel"."folderId"`)
+      .where(`"rel"."userId" = :userId`, { userId });
   }
 
   @Query(returns => [FolderRelDto])
@@ -263,10 +271,13 @@ export class FolderResolver {
   }
 
   @Mutation(returns => FolderRelDto)
-  async joinFolder(@UserId() userId: number, @Args('input') { id, invite }: JoinFolderInput) {
+  async joinFolder(
+    @UserId() userId: number,
+    @Args('input') { id, invite }: JoinFolderInput,
+  ) {
     const folder = await getRepository(FolderEntity).findOne({
       id,
-      invite
+      invite,
     });
 
     if (!folder) throw new AccessError();
@@ -274,7 +285,7 @@ export class FolderResolver {
     const rep = getRepository(FolderRelEntity);
     const rel = rep.create({
       userId,
-      folder
+      folder,
     });
 
     return rep.save(rel);

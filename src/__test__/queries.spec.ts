@@ -101,4 +101,34 @@ describe('queries', () => {
 
     console.log(data);
   });
+
+  test('access', async () => {
+    const id = 'b0aec994-e02e-4ffc-9096-db4c60dd4ef6';
+    const userId = 1;
+    const invite = 'test';
+    const query = await getRepository(FolderEntity)
+      .createQueryBuilder('folder')
+      .select(`"folder"."id"`, 'id')
+      .addSelect(`"folder"."name"`, 'name')
+      .addSelect(`"folder"."date"`, 'date')
+      .addSelect(`"folder"."invite"`, 'invite')
+      .addSelect(qb => {
+        return qb
+          .select(`COUNT(*)::int`)
+          .from(NoteEntity, 'note')
+          .where(`"note"."folderId" = "folder"."id"`);
+      }, 'count')
+      .addSelect(qb => {
+        return qb
+          .select(`"rel"."access"::varchar::int`, 'access')
+          .from(FolderRelEntity, 'rel')
+          .where(`"rel"."userId" = :userId`, { userId })
+          .andWhere(`"rel"."folderId" = "folder"."id"`);
+      }, 'access')
+      .where(`"folder"."invite" = :invite`, { invite })
+      .andWhere(`"folder"."id" = :id`, { id })
+      .getRawOne();
+
+    console.log(query);
+  });
 });
