@@ -1,10 +1,15 @@
 import { Module } from '@nestjs/common';
 import { GraphQLModule } from '@nestjs/graphql';
-import { auth } from 'services';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { auth, ErrorsInterceptor } from 'services';
 import { NoteResolver, FolderResolver } from 'resolvers';
 
 @Module({
-  providers: [NoteResolver, FolderResolver],
+  providers: [
+    { provide: APP_INTERCEPTOR, useClass: ErrorsInterceptor },
+    NoteResolver,
+    FolderResolver,
+  ],
   imports: [
     GraphQLModule.forRoot({
       path: 'api',
