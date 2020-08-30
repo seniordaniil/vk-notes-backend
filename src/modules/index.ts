@@ -18,6 +18,7 @@ import { NoteResolver, FolderResolver } from 'resolvers';
           'schema.polling.enable': false,
         } as any,
       },
+      introspection: true,
       context: async ({ request }): Promise<Ctx> =>
         auth(process.env.APP_SECRET_KEY, request),
       autoSchemaFile: true,
