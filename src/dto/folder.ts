@@ -19,7 +19,13 @@ export class FolderDto extends mix().with(folderFactory) {
 }
 
 @ObjectType()
-export class FolderRelDto extends mix().with(folderRelFactory) {}
+export class FolderRelDto extends mix().with(folderRelFactory) {
+  @Field({ nullable: true })
+  fullName?: string;
+
+  @Field({ nullable: true })
+  photo?: string;
+}
 
 @ArgsType()
 export class FolderArgs extends mix().with(byIdArgs) {

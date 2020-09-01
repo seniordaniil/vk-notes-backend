@@ -131,4 +131,10 @@ describe('queries', () => {
 
     console.log(query);
   });
+
+  test('resl', async () => {
+    const rels = getRepository(FolderRelEntity)
+      .createQueryBuilder('rel')
+      .select(`"rel"."`)
+  })
 });

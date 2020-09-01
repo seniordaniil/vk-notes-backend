@@ -13,7 +13,7 @@ import {
   JoinFolderInput,
 } from 'dto';
 import { MemberAccess } from 'models';
-import { AuthGuard, UserId } from 'services';
+import { AuthGuard, UserId, VKService } from 'services';
 import { getManager, getRepository, Not } from 'typeorm';
 import { FolderEntity, FolderRelEntity, NoteEntity } from 'entities';
 import { AccessError, UnknownError } from 'lib/errors';
@@ -22,6 +22,8 @@ import crypto from 'crypto';
 @AuthGuard()
 @Resolver()
 export class FolderResolver {
+  constructor(private vkService: VKService) {}
+
   @Query(returns => [FolderDto])
   folders(@UserId() userId: number, @Args() { offset, limit }: PaginateArgs) {
     return this.folderByUserQuery(userId)
@@ -86,8 +88,11 @@ export class FolderResolver {
   }
 
   @Query(returns => [FolderRelDto])
-  members(@Args() { id, limit, offset }: FolderRelArgs) {
-    return getRepository(FolderRelEntity).find({
+  async members(
+    @UserId() userId: number,
+    @Args() { id, limit, offset }: FolderRelArgs,
+  ): Promise<FolderRelDto[]> {
+    const members = await getRepository(FolderRelEntity).find({
       where: {
         folder: {
           id,
@@ -99,6 +104,24 @@ export class FolderResolver {
         date: 'DESC',
         userId: 'ASC',
       },
+    });
+
+    if (offset === 0 && members.length === 1 && members[0].userId === userId)
+      return [members[0]];
+    if (members.length < 1) return [];
+
+    const response = await this.vkService.vk.api.users.get({
+      user_ids: members.map(member => member.userId).join(','),
+      fields: ['photo_50'],
+    });
+
+    return members.map((member, index) => {
+      const m: FolderRelDto = member;
+
+      m.photo = response[index].photo_50;
+      m.fullName = `${response[index].first_name} ${response[index].last_name}`;
+
+      return m;
     });
   }
 
