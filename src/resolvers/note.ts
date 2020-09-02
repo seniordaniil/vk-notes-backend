@@ -1,4 +1,12 @@
-import { Resolver, Query, Args, Mutation } from '@nestjs/graphql';
+import {
+  Resolver,
+  Query,
+  Args,
+  Mutation,
+  ResolveField,
+  Int,
+  Parent,
+} from '@nestjs/graphql';
 import {
   NoteDto,
   ByIdArgs,
@@ -10,7 +18,7 @@ import {
 import { AuthGuard, UserId } from 'services';
 import { getRepository, getManager } from 'typeorm';
 import { FolderRelEntity, NoteEntity } from 'entities';
-import { AccessError, UnknownError } from 'lib/errors';
+import { AccessError, UnknownError, TooLongContent } from 'lib/errors';
 
 @AuthGuard()
 @Resolver()
@@ -52,6 +60,7 @@ export class NoteResolver {
     @UserId() userId: number,
     @Args('input') { id, title, text }: CreateNoteInput,
   ) {
+    this.validate(title, text);
     return getManager().transaction(async tx => {
       const rel = await tx.getRepository(FolderRelEntity).findOne({
         folder: {
@@ -82,6 +91,7 @@ export class NoteResolver {
     @UserId() userId: number,
     @Args('input') { id, title, text, noteId }: UpdateNoteInput,
   ) {
+    this.validate(title, text);
     return getManager().transaction(async tx => {
       const rel = await tx.getRepository(FolderRelEntity).findOne({
         folder: {
@@ -106,7 +116,7 @@ export class NoteResolver {
           title,
           text,
           userId,
-          updated
+          updated,
         },
       );
 
@@ -114,6 +124,13 @@ export class NoteResolver {
 
       return updated;
     });
+  }
+
+  private validate(title: string, text?: string) {
+    const maxLength = 5120;
+    let length = title.length;
+    if (text) length += text.length;
+    if (length > maxLength) throw new TooLongContent();
   }
 
   @Mutation(returns => Boolean)
@@ -137,5 +154,18 @@ export class NoteResolver {
 
       return res.affected === 1;
     });
+  }
+}
+
+@Resolver(of => NoteDto)
+export class NoteDtoResolver implements ResolverInterface<NoteDto> {
+  @ResolveField(returns => String)
+  title(
+    @Parent() note: NoteDto,
+    @Args('len', { nullable: true, type: () => Int }) len?: number,
+  ) {
+    if (!len) return note.title;
+    const sliced = note.title.slice(0, len);
+    return note.title.length > sliced.length ? sliced + '...' : sliced;
   }
 }

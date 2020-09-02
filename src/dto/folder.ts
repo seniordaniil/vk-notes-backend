@@ -8,6 +8,7 @@ import {
   byIdInput,
 } from 'models';
 import { PaginateArgs } from './common';
+import { Length } from 'class-validator';
 
 @ObjectType()
 export class FolderDto extends mix().with(folderFactory) {
@@ -39,6 +40,7 @@ export class FolderRelArgs extends mix(PaginateArgs).with(byIdArgs) {}
 @InputType()
 export class CreateFolderInput {
   @Field()
+  @Length(1, 32)
   name: string;
 }
 
