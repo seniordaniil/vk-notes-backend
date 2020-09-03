@@ -7,7 +7,7 @@ import {
   Int,
   InputType,
 } from '@nestjs/graphql';
-import { IsUUID, Max } from 'class-validator';
+import { IsUUID, Max, Min } from 'class-validator';
 import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
@@ -74,6 +74,7 @@ export const limitArgs = (max: number) => (superclass: Constructor) => {
   class Limit extends superclass {
     @Field(type => Int)
     @Max(max)
+    @Min(1)
     limit: number;
   }
 
