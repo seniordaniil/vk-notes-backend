@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { GraphQLModule } from '@nestjs/graphql';
 import { APP_INTERCEPTOR } from '@nestjs/core';
-import { auth, ErrorsInterceptor, VKService } from 'services';
+import { auth, ErrorsInterceptor, VKService, Redis } from 'services';
 import { NoteResolver, FolderResolver, NoteDtoResolver } from 'resolvers';
 
 @Module({
   providers: [
     { provide: APP_INTERCEPTOR, useClass: ErrorsInterceptor },
+    Redis,
     VKService,
     NoteResolver,
     NoteDtoResolver,

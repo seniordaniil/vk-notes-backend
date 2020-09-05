@@ -63,5 +63,6 @@ export const auth = async (
 
   return {
     userId,
+    sign: urlParams.sign,
   };
 };

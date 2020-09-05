@@ -15,12 +15,13 @@ import {
   ByNoteInput,
   GetNotesArgs,
 } from 'dto';
-import { AuthGuard, UserId } from 'services';
+import { AuthGuard, UserId, Limit } from 'services';
 import { getRepository, getManager } from 'typeorm';
 import { FolderRelEntity, NoteEntity } from 'entities';
 import { AccessError, UnknownError, TooLongContent } from 'lib/errors';
 
 @AuthGuard()
+@Limit(5)
 @Resolver()
 export class NoteResolver {
   @Query(returns => [NoteDto])

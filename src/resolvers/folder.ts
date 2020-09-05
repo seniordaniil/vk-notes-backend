@@ -1,4 +1,11 @@
-import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
+import {
+  Args,
+  Int,
+  Mutation,
+  Query,
+  Resolver,
+  Directive,
+} from '@nestjs/graphql';
 import {
   ByIdArgs,
   CreateFolderInput,
@@ -13,13 +20,14 @@ import {
   JoinFolderInput,
 } from 'dto';
 import { MemberAccess } from 'models';
-import { AuthGuard, UserId, VKService } from 'services';
+import { AuthGuard, UserId, VKService, Limit } from 'services';
 import { getManager, getRepository, Not } from 'typeorm';
 import { FolderEntity, FolderRelEntity, NoteEntity } from 'entities';
 import { AccessError, UnknownError } from 'lib/errors';
 import crypto from 'crypto';
 
 @AuthGuard()
+@Limit(5)
 @Resolver()
 export class FolderResolver {
   constructor(private vkService: VKService) {}
@@ -135,7 +143,7 @@ export class FolderResolver {
     return data.count;
   }
 
-  @Mutation(returns => FolderDto)
+  @Mutation(returns => FolderDto, {})
   createFolder(
     @UserId() userId: number,
     @Args('input') { name }: CreateFolderInput,
