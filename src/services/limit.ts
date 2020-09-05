@@ -27,6 +27,8 @@ export class LimitGuard implements CanActivate {
     const parentType = info.parentType.toString().toLowerCase();
     const sign = ctx.getContext<Ctx>().sign;
 
+    if (!sign) return false;
+
     const key = `${parentType}.${method}:${sign}`;
 
     const requests = await this.redis.client.incr(key);

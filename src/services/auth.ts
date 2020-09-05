@@ -55,14 +55,16 @@ export const auth = async (
     .replace(/\//g, '_')
     .replace(/=$/, '');
 
-  let userId = null;
+  let userId: number = null;
+  let sign: string = null;
 
   if (paramsHash === urlParams.sign) {
     userId = parseInt(urlParams['vk_user_id']);
+    sign = urlParams.sign;
   }
 
   return {
     userId,
-    sign: urlParams.sign,
+    sign,
   };
 };
