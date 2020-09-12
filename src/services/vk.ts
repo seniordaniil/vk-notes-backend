@@ -8,6 +8,7 @@ export class VKService {
   constructor() {
     this.vk = new VK({
       token: process.env.APP_SERVICE_KEY,
+      language: process.env.APP_VK_LANGUAGE
     });
   }
 }
